@@ -127,7 +127,6 @@
   <div class="controls">
     <input type="text" id="searchBox" placeholder="Cari nama sekolah..." style="flex:1; min-width:180px;">
     <select id="kecFilter"><option value="">Semua Kecamatan</option></select>
-    <select id="hariFilter"></select>
     <div id="statusRowBtns" style="display:flex; gap:8px; flex-wrap:wrap;">
       <button class="filter-btn active" data-status="">Semua</button>
       <button class="filter-btn" data-status="tm">Tatap Muka</button>
@@ -174,6 +173,7 @@ const CONFIG = {
 let allRows = [];
 let dayColumns = [];
 let activeStatus = "";
+let selectedDay = "";
 
 function csvUrl(){
   return `https://docs.google.com/spreadsheets/d/${CONFIG.sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(CONFIG.sheetName)}&_=${Date.now()}`;
@@ -238,13 +238,13 @@ async function loadData(){
         });
         return {
           nama: kName ? r[kName] : "-",
-          kecamatan: kKec ? r[kKec] : "-",
+          kecamatan: kKec ? (r[kKec]||"").toString().trim() : "-",
           hari
         };
       });
 
     populateKecFilter();
-    populateHariFilter();
+    tentukanSelectedDay();
     render();
 
     const now = new Date();
@@ -261,35 +261,36 @@ async function loadData(){
   }
 }
 
+function daftarKecamatanUnik(rows){
+  const map = new Map();
+  rows.forEach(r=>{
+    const key = (r.kecamatan||"").trim().toUpperCase();
+    if(key && !map.has(key)) map.set(key, r.kecamatan.trim());
+  });
+  return [...map.values()].sort();
+}
+
 function populateKecFilter(){
   const sel = document.getElementById("kecFilter");
   const current = sel.value;
-  const kecs = [...new Set(allRows.map(r => (r.kecamatan||"").trim()).filter(Boolean))].sort();
+  const kecs = daftarKecamatanUnik(allRows);
   sel.innerHTML = '<option value="">Semua Kecamatan</option>' + kecs.map(k=>`<option value="${k}">${k}</option>`).join("");
   sel.value = current;
 }
 
-function populateHariFilter(){
-  const sel = document.getElementById("hariFilter");
-  const current = sel.value;
-  sel.innerHTML = dayColumns.map(d=>`<option value="${d}">${d}</option>`).join("");
-
-  if(dayColumns.includes(current)){
-    sel.value = current; // pengguna sudah pilih hari tertentu, pertahankan
-    return;
-  }
+function tentukanSelectedDay(){
+  if(dayColumns.includes(selectedDay)) return; // sudah valid, pertahankan
   const todayStr = tanggalDDMMYYYY();
   const kolomHariIni = dayColumns.find(d => d.includes(todayStr));
-  sel.value = kolomHariIni || dayColumns[0];
+  selectedDay = kolomHariIni || dayColumns[0] || "";
 }
 
 function render(){
   const search = document.getElementById("searchBox").value.trim().toLowerCase();
   const kec = document.getElementById("kecFilter").value;
-  const selectedDay = document.getElementById("hariFilter").value;
 
   const filtered = allRows.filter(r=>{
-    if(kec && r.kecamatan !== kec) return false;
+    if(kec && (r.kecamatan||"").trim().toUpperCase() !== kec.trim().toUpperCase()) return false;
     if(search && !r.nama.toLowerCase().includes(search)) return false;
     if(activeStatus && selectedDay && (!r.hari[selectedDay] || r.hari[selectedDay].status !== activeStatus)) return false;
     return true;
@@ -298,7 +299,7 @@ function render(){
   document.getElementById("cTotal").textContent = filtered.length;
   document.getElementById("cTM").textContent = filtered.filter(r=>selectedDay && r.hari[selectedDay] && r.hari[selectedDay].status==="tm").length;
   document.getElementById("cBDR").textContent = filtered.filter(r=>selectedDay && r.hari[selectedDay] && r.hari[selectedDay].status==="bdr").length;
-  document.getElementById("cKec").textContent = new Set(allRows.map(r=>r.kecamatan)).size;
+  document.getElementById("cKec").textContent = daftarKecamatanUnik(allRows).length;
 
   const theadRow = document.getElementById("theadRow");
   theadRow.innerHTML = '<th>Nama Sekolah</th><th>Kecamatan</th>' + dayColumns.map(d=>`<th>${d}</th>`).join("");
@@ -326,7 +327,6 @@ function render(){
 
 document.getElementById("searchBox").addEventListener("input", render);
 document.getElementById("kecFilter").addEventListener("change", render);
-document.getElementById("hariFilter").addEventListener("change", render);
 document.getElementById("refreshBtn").addEventListener("click", loadData);
 document.querySelectorAll(".filter-btn").forEach(btn=>{
   btn.addEventListener("click", ()=>{
