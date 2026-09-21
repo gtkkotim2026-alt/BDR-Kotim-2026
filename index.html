@@ -84,6 +84,9 @@
   .badge.tm{background:var(--green-bg); color:var(--green);}
   .badge.bdr{background:var(--orange-bg); color:var(--orange);}
   .badge.unk{background:#f1f5f9; color:#94a3b8;}
+  .badge.jenjang{background:#e0e7ff; color:#4338ca;}
+  .badge.negeri{background:#dbeafe; color:#1d4ed8;}
+  .badge.swasta{background:#fce7f3; color:#be185d;}
   .empty, .err{text-align:center; padding:44px 16px; color:var(--muted); font-size:14px;}
   .err{color:#b91c1c;}
   footer{margin-top:18px; text-align:center; font-size:12px; color:var(--muted);}
@@ -128,6 +131,19 @@
   <div class="controls">
     <input type="text" id="searchBox" placeholder="Cari nama sekolah..." style="flex:1; min-width:180px;">
     <select id="kecFilter"><option value="">Semua Kecamatan</option></select>
+    <select id="jenjangFilter">
+      <option value="">Semua Jenjang</option>
+      <option value="TK">TK</option>
+      <option value="SD">SD</option>
+      <option value="SMP">SMP</option>
+      <option value="KB">KB</option>
+      <option value="SKB">SKB</option>
+    </select>
+    <select id="statusJenjangFilter">
+      <option value="">Semua Status</option>
+      <option value="Negeri">Negeri</option>
+      <option value="Swasta">Swasta</option>
+    </select>
     <div id="statusRowBtns" style="display:flex; gap:8px; flex-wrap:wrap;">
       <button class="filter-btn active" data-status="">Semua</button>
       <button class="filter-btn" data-status="tm">Tatap Muka</button>
@@ -140,6 +156,8 @@
       <thead>
         <tr id="theadRow">
           <th>Nama Sekolah</th>
+          <th>Jenjang</th>
+          <th>Status</th>
           <th>Kecamatan</th>
         </tr>
       </thead>
@@ -164,6 +182,14 @@
       - Kolom-kolom hari, contoh: "Senin, 21/09/2026", "Selasa, 22/09/2026", dst.
         Kolom apa saja selain Nama Sekolah & Kecamatan otomatis dianggap kolom hari.
         Isi tiap sel dengan "Tatap Muka" atau "BDR".
+
+   Jenjang & Status Negeri/Swasta dideteksi OTOMATIS dari Nama Sekolah, tidak perlu kolom tambahan:
+      - Jenjang: TK, SD, SMP, KB, SKB (dibaca dari awalan nama sekolah)
+      - Status Negeri:
+          TK Negeri : mengandung "TK N" atau "TK Negeri"
+          SD Negeri : mengandung "SDN", "SD Negeri", atau "SD - Negeri"
+          SMP Negeri: mengandung "SMPN" atau "SMP Negeri"
+          Selain pola di atas -> dianggap Swasta
 ======================================== */
 const CONFIG = {
   sheetId: "1N_I7PkqLgj3yEYRdGAZHIsr_sMa4cxlOTG67TdFpeF0",
@@ -199,6 +225,31 @@ function normalizeStatus(v){
   if(s.includes("tatap") || s === "tm") return "tm";
   if(s.includes("bdr") || s.includes("daring") || s.includes("rumah")) return "bdr";
   return "unk";
+}
+
+// Deteksi jenjang dari nama sekolah (SKB & SMP dicek lebih dulu supaya tidak salah tangkap oleh KB/SD)
+function detectJenjang(nama){
+  const s = (nama || "").toString().trim().toUpperCase();
+  if(s.startsWith("SKB")) return "SKB";
+  if(s.startsWith("SMP")) return "SMP";
+  if(s.startsWith("SD")) return "SD";
+  if(s.startsWith("TK")) return "TK";
+  if(s.startsWith("KB")) return "KB";
+  return "-";
+}
+
+// Deteksi status Negeri/Swasta dari nama sekolah
+function detectStatusJenjang(nama){
+  const s = (nama || "").toString().trim().toUpperCase();
+  // TK Negeri: "TK N", "TK NEGERI"
+  if(/\bTK\s*N\b/.test(s) || s.includes("TK NEGERI")) return "Negeri";
+  // SD Negeri: "SDN", "SD NEGERI", "SD - NEGERI"
+  if(s.includes("SDN") || s.includes("SD NEGERI") || s.includes("SD - NEGERI") || s.includes("SD-NEGERI")) return "Negeri";
+  // SMP Negeri: "SMPN", "SMP NEGERI"
+  if(s.includes("SMPN") || s.includes("SMP NEGERI")) return "Negeri";
+  // fallback umum untuk KB/SKB atau pola lain yang eksplisit menyebut "NEGERI"
+  if(s.includes("NEGERI")) return "Negeri";
+  return "Swasta";
 }
 
 function tanggalHariIniText(){
@@ -237,9 +288,12 @@ async function loadData(){
         dayColumns.forEach(d => {
           hari[d] = { raw: r[d] || "", status: normalizeStatus(r[d]) };
         });
+        const nama = kName ? r[kName] : "-";
         return {
-          nama: kName ? r[kName] : "-",
+          nama: nama,
           kecamatan: kKec ? (r[kKec]||"").toString().trim() : "-",
+          jenjang: detectJenjang(nama),
+          statusJenjang: detectStatusJenjang(nama),
           hari
         };
       });
@@ -289,10 +343,14 @@ function tentukanSelectedDay(){
 function render(){
   const search = document.getElementById("searchBox").value.trim().toLowerCase();
   const kec = document.getElementById("kecFilter").value;
+  const jenjang = document.getElementById("jenjangFilter").value;
+  const statusJenjang = document.getElementById("statusJenjangFilter").value;
 
   const filtered = allRows.filter(r=>{
     if(kec && (r.kecamatan||"").trim().toUpperCase() !== kec.trim().toUpperCase()) return false;
     if(search && !r.nama.toLowerCase().includes(search)) return false;
+    if(jenjang && r.jenjang !== jenjang) return false;
+    if(statusJenjang && r.statusJenjang !== statusJenjang) return false;
     if(activeStatus && selectedDay && (!r.hari[selectedDay] || r.hari[selectedDay].status !== activeStatus)) return false;
     return true;
   });
@@ -303,11 +361,11 @@ function render(){
   document.getElementById("cKec").textContent = daftarKecamatanUnik(allRows).length;
 
   const theadRow = document.getElementById("theadRow");
-  theadRow.innerHTML = '<th>Nama Sekolah</th><th>Kecamatan</th>' + dayColumns.map(d=>`<th>${d}</th>`).join("");
+  theadRow.innerHTML = '<th>Nama Sekolah</th><th>Jenjang</th><th>Status</th><th>Kecamatan</th>' + dayColumns.map(d=>`<th>${d}</th>`).join("");
 
   const tbody = document.getElementById("tbody");
   if(!filtered.length){
-    tbody.innerHTML = `<tr><td colspan="${2+dayColumns.length}" class="empty">Tidak ada data yang cocok.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${4+dayColumns.length}" class="empty">Tidak ada data yang cocok.</td></tr>`;
     return;
   }
   function badgeHtml(cell){
@@ -318,8 +376,11 @@ function render(){
   }
   tbody.innerHTML = filtered.map(r=>{
     const dayCells = dayColumns.map(d => `<td>${badgeHtml(r.hari[d])}</td>`).join("");
+    const statusCls = r.statusJenjang === "Negeri" ? "negeri" : "swasta";
     return `<tr>
       <td>${r.nama}</td>
+      <td><span class="badge jenjang">${r.jenjang}</span></td>
+      <td><span class="badge ${statusCls}">${r.statusJenjang}</span></td>
       <td>${r.kecamatan || "-"}</td>
       ${dayCells}
     </tr>`;
@@ -328,6 +389,8 @@ function render(){
 
 document.getElementById("searchBox").addEventListener("input", render);
 document.getElementById("kecFilter").addEventListener("change", render);
+document.getElementById("jenjangFilter").addEventListener("change", render);
+document.getElementById("statusJenjangFilter").addEventListener("change", render);
 document.getElementById("refreshBtn").addEventListener("click", loadData);
 document.querySelectorAll(".filter-btn").forEach(btn=>{
   btn.addEventListener("click", ()=>{
