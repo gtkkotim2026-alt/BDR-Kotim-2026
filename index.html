@@ -243,6 +243,7 @@ function detectStatusJenjang(nama){
   const s = (nama || "").toString().trim().toUpperCase();
   // TK Negeri: "TK N", "TK NEGERI"
   if(/\bTK\s*N\b/.test(s) || s.includes("TK NEGERI")) return "Negeri";
+   if(/\bTK\s*N\b/.test(s) || s.includes("SKB")) return "Negeri";
   // SD Negeri: "SDN", "SD NEGERI", "SD - NEGERI"
   if(s.includes("SDN") || s.includes("SD NEGERI") || s.includes("SD - NEGERI") || s.includes("SD-NEGERI")) return "Negeri";
   // SMP Negeri: "SMPN", "SMP NEGERI"
